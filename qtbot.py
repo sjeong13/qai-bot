@@ -622,7 +622,7 @@ elif page == "spec_docs":
 else:
     # 사이드바
     with st.sidebar:
-        st.header("👾 WELCOME")
+        st.header("🙌 WELCOME")
 
         # 연결 상태 표시
         if get_supabase_client():
@@ -1145,14 +1145,82 @@ else:
 
 
     # ============================================
-    # 메인 영역 - AI 기반 테스트 케이스 추천
+    # 메인 영역 - 기능 선택
     # ============================================
+    st.header("🎯 어떤 기능을 사용하시겠어요?")
+    st.markdown("---")
+    
+    # 4개 버튼을 2x2 그리드로 배치
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button(
+            "👾 테스트 케이스 추천받기",
+            use_container_width=True,
+            help="AI가 유사한 케이스를 찾아 테스트 케이스를 생성해줍니다"
+        ):
+            st.query_params.update({"page": "recommend"})
+            st.rerun()
 
+        if st.button(
+            "🔍 키워드 검색",
+            use_container_width=True,
+            help="학습 데이터 안에서 키워드를 검색합니다"
+        ):
+            st.query_params.update({"page": "keyword"})
+            st.rerun()
+
+    with col2:
+        if st.button(
+            "⚠️ 사전 리스크 확인",
+            use_container_width=True,
+            help="AI가 리스크와 사이드 이펙트를 분석해줍니다"
+        ):
+            st.query_params.update({"page": "risk"})
+            st.rerun()
+
+        if st.button(
+            "✅ 의도된 동작인지 확인",
+            use_container_width=True,
+            help="학습 데이터 기반으로 버그 가능성을 판단합니다"
+        ):
+            st.query_params.update({"page": "verify"})
+            st.rerun()
+
+    # 안내 메시지
+    st.markdown("---")
+    st.info("""
+    💡 **기능 설명**
+    - 📝 **테스트 케이스 추천**: AI가 유사 케이스를 찾아 신규 테스트 케이스 생성
+    - ⚠️ **사전 리스크 확인**: 기능 추가/수정 시 발생 가능한 리스크 분석
+    - ✅ **의도된 동작 확인**: 특정 동작이 버그인지 의도된 것인지 판단 (AI 추론X)
+    - 🔍 **키워드 검색**: 학습 데이터에서 빠르게 검색
+    """)
+
+    # 통계 표시
+    tc_count = st.session_state.get('tc_count', 0)
+    doc_count = st.session_state.get('doc_count', 0)
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("📊 테스트 케이스", f"{tc_count}개")
+    with col_b:
+        st.metric("📚 기획 문서", f"{doc_count}개")
+    with col_c:
+        st.metric("🔍 검색 방식", RERANK_METHOD.upper())
+
+# ============================================
+# 1. 테스트 케이스 추천 페이지
+# ============================================
+elif page == "recommend":
+    st.header("📝 AI 테스트 케이스 추천")
+    st.markdown('<a href="/" target="_self">🏠 홈으로 돌아가기</a>', unsafe_allow_html=True)
+    st.markdown("---")
+    
     col1, col2 = st.columns([2, 1])
 
     with col1:
         st.header("🔍 AI 기반 테스트 케이스 추천")
-
 
         # 세션 스테이트에서 가져오기
         tc_count = st.session_state.get('tc_count', 0)
@@ -1651,3 +1719,371 @@ else:
        - **AI가 자동으로** 기존 데이터를 학습하여 신규 테스트 케이스를 생성해요
        - 생성된 테스트 케이스(표)는 Excel로 다운로드할 수 있어요
     """)
+
+
+
+
+# 사전 리스크 확인 페이지
+elif page == "risk":
+    st.header("⚠️ 사전 리스크 확인")
+    st.markdown('<a href="/" target="_self">🏠 홈으로 돌아가기</a>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.info("💡 추가/수정할 기능을 입력하면, AI가 발생 가능한 리스크와 사이드 이펙트를 분석해줍니다.")
+
+    # 입력 영역
+    feature_description = st.text_area(
+        "기능 설명을 입력하세요",
+        placeholder="예시:\n정기 발행 쿠폰 기능이 추가될 예정입니다.\n- 정기 발행 쿠폰 템플릿 생성 -> 매월 오전 7시에 지정 발행 쿠폰으로 발행됨",
+        height=200,
+        key="risk_input"
+    )
+
+    if st.button("⚠️ 리스크 검토 시작", type="primary"):
+        if not feature_description:
+            st.warning("⚠️ 기능 설명을 입력해주세요!")
+        else:
+            with st.spinner("AI가 리스크를 분석 중입니다..."):
+                # 1. 관련 테스트 케이스 검색
+                relevant_cases = hybrid_search_test_cases(
+                    query_text=feature_description,
+                    limit=30,
+                    similarity_threshold=0.3
+                )
+
+                # 2. 관련 기획 문서 검색
+                spec_docs = hybrid_search_spec_docs(
+                    query_text=feature_description,
+                    limit=10
+                )
+
+                # 3. AI 프롬프트 생성
+                test_cases_str = json.dumps(
+                    [{"id": tc.get("id"), "name": tc.get("name"), "description": tc.get("description")}
+                     for tc in relevant_cases],
+                    ensure_ascii=False
+                )
+
+                spec_docs_str = ""
+                if spec_docs:
+                    spec_docs_str = "\n\n=== 관련 기획 문서 ===\n"
+                    for doc in spec_docs:
+                        spec_docs_str += f"\n[{doc['title']}]\n{doc['content'][:300]}...\n"
+
+                prompt = f"""
+[역할]
+너는 IT SaaS 전문가로, 사전 리스크 검토를 담당한다.
+
+[요청]
+다음 기능에 대해 발생 가능한 리스크와 사이드 이펙트를 분석해줘:
+{feature_description}
+
+[학습 데이터]
+{test_cases_str}
+{spec_docs_str}
+
+[분석 항목]
+1. **직접적인 리스크**: 이 기능 자체에서 발생할 수 있는 문제
+2. **연쇄 리스크**: 이 기능이 영향을 줄 수 있는 다른 기능들
+3. **사이드 이펙트**: 예상치 못한 부작용
+4. **(참고) 테스트 권장 사항**: 어떤 부분을 집중적으로 테스트해야 하는지
+
+응답 형식 (JSON):
+```json
+{{
+  "direct_risks": ["리스크1", "리스크2", ...],
+  "chain_risks": ["연쇄 리스크1", "연쇄 리스크2", ...],
+  "side_effects": ["사이드 이펙트1", "사이드 이펙트2", ...],
+  "test_recommendations": ["테스트 권장1", "테스트 권장2", ...],
+  "overall_risk_level": "높음/중간/낮음"
+}}
+```
+"""
+
+                # 4. AI 호출
+                try:
+                    genai.configure(api_key=GOOGLE_API_KEY)
+                    # model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    response = model.generate_content(prompt)
+                    response_text = response.text
+
+                    # JSON 파싱
+                    if "```json" in response_text:
+                        json_str = response_text.split("```json")[1].split("```")[0].strip()
+                    else:
+                        json_str = response_text.strip()
+
+                    import re
+                    json_str_cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', json_str)
+
+                    try:
+                        risk_result = json.loads(json_str_cleaned)
+                    except json.JSONDecodeError as e:
+                        st.error(f"❌ JSON 파싱 오류: {str(e)}")
+                        # 재시도
+                        try:
+                            json_str_final = json_str_cleaned.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+                            json_str_final = re.sub(r'\s+', ' ', json_str_final)
+                            risk_result = json.loads(json_str_final)
+                            st.warning("⚠️ JSON 파싱에 문제가 있었지만 복구했습니다.")
+                        except:
+                            st.error("❌ AI 응답을 처리할 수 없습니다. 다시 시도해주세요.")
+                            st.stop()
+
+                    risk_result = json.loads(json_str)
+
+                    # 5. 결과 표시
+                    st.success("✅ 리스크 분석 완료!")
+
+                    # 위험도 표시
+                    risk_level = risk_result.get("overall_risk_level", "중간")
+                    if risk_level == "높음":
+                        st.error(f"🔴 **전체 위험도: {risk_level}**")
+                    elif risk_level == "중간":
+                        st.warning(f"🟡 **전체 위험도: {risk_level}**")
+                    else:
+                        st.info(f"🟢 **전체 위험도: {risk_level}**")
+
+                    # 직접적인 리스크
+                    with st.expander("⚠️ 직접적인 리스크", expanded=True):
+                        for risk in risk_result.get("direct_risks", []):
+                            st.warning(f"- {risk}")
+
+                    # 연쇄 리스크
+                    with st.expander("🔗 연쇄 리스크 (다른 기능 영향)", expanded=True):
+                        for risk in risk_result.get("chain_risks", []):
+                            st.info(f"- {risk}")
+
+                    # 사이드 이펙트
+                    with st.expander("💥 사이드 이펙트", expanded=True):
+                        for effect in risk_result.get("side_effects", []):
+                            st.error(f"- {effect}")
+
+                    # 테스트 권장 사항
+                    with st.expander("✅ (참고) 테스트 권장 사항", expanded=True):
+                        for rec in risk_result.get("test_recommendations", []):
+                            st.success(f"- {rec}")
+
+                except Exception as e:
+                    st.error(f"❌ 분석 실패: {str(e)}")
+
+
+# 의도된 동작 확인 페이지
+elif page == "verify":
+    st.header("✅ 의도된 동작인지 확인")
+    st.markdown('<a href="/" target="_self">🏠 홈으로 돌아가기</a>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.info("💡 특정 동작이 버그인지 의도된 것인지 학습 데이터를 기반으로 판단합니다. (추론 없이 데이터만 사용)")
+
+    # 입력 영역
+    behavior_description = st.text_area(
+        "확인하고 싶은 동작을 입력하세요",
+        placeholder="예시:\n쿠폰 사용 시 적립금도 함께 사용할 수 있는 것 같은데, 이게 맞나요?\n아니면 쿠폰과 적립금은 동시 사용이 불가능한가요?",
+        height=200,
+        key="verify_input"
+    )
+
+    if st.button("✅ 동작 확인", type="primary"):
+        if not behavior_description:
+            st.warning("⚠️ 확인하고 싶은 동작을 입력해주세요!")
+        else:
+            with st.spinner("학습 데이터에서 확인 중..."):
+                # 1. 관련 케이스 검색 (limit 없음)
+                relevant_cases = hybrid_search_test_cases(
+                    query_text=behavior_description,
+                )
+
+                # 2. 관련 문서 검색
+                spec_docs = hybrid_search_spec_docs(
+                    query_text=behavior_description,
+                )
+
+                if not relevant_cases and not spec_docs:
+                    st.warning("⚠️ 학습 데이터에서 관련 정보를 찾을 수 없습니다.")
+                else:
+                    # 검색 결과 수 표시
+                    st.info(f"📊 검색 결과: 테스트 케이스 {len(relevant_cases)}개, 기획 문서 {len(spec_docs
+                    
+                    # 3. AI 프롬프트 (추론 금지!)
+                    test_cases_str = json.dumps(
+                        [{"name": tc.get("name"), "description": tc.get("description"), 
+                          "data": tc.get("data")} for tc in relevant_cases],
+                        ensure_ascii=False
+                    )
+
+                    spec_docs_str = ""
+                    if spec_docs:
+                        spec_docs_str = "\n\n=== 기획 문서 ===\n"
+                        for doc in spec_docs:
+                            spec_docs_str += f"\n[{doc['title']}]\n{doc['content']}\n"
+
+                    prompt = f"""
+[역할]
+너는 QA 전문가로, 학습 데이터만을 근거로 동작을 판단한다.
+
+**중요: 절대 추론하지 마. 학습 데이터에 명시된 내용만 사용해.**
+
+[질문]
+{behavior_description}
+
+[학습 데이터]
+{test_cases_str}
+{spec_docs_str}
+
+[지침]
+1. 학습 데이터에 **기록된 내용**만 사용
+2. 학습 데이터에 없으면 "데이터 없음"이라고 답변
+3. 추론, 추측, 일반적인 지식 사용 금지
+
+응답 형식 (JSON):
+```json
+{{
+  "found_in_data": true/false,
+  "answer": "의도된 동작입니다" 또는 "버그일 가능성이 높습니다" 또는 "학습 데이터에 정보 없음",
+  "evidence": "학습 데이터의 근거 (구체적인 인용)",
+  "confidence": "높음/중간/낮음"
+}}
+```
+"""
+
+                    # 4. AI 호출
+                    try:
+                        genai.configure(api_key=GOOGLE_API_KEY)
+                        # model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                        model = genai.GenerativeModel('gemini-2.5-flash')
+                        response = model.generate_content(prompt)
+                        response_text = response.text
+
+                        # JSON 파싱
+                        if "```json" in response_text:
+                            json_str = response_text.split("```json")[1].split("```")[0].strip()
+                        else:
+                            json_str = response_text.strip()
+
+                        import re
+                        json_str_cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', json_str)
+
+                        try:
+                            verify_result = json.loads(json_str_cleaned)
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ JSON 파싱 오류: {str(e)}")
+                            try:
+                                json_str_final = json_str_cleaned.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+                                json_str_final = re.sub(r'\s+', ' ', json_str_final)
+                                verify_result = json.loads(json_str_final)
+                                st.warning("⚠️ JSON 파싱에 문제가 있었지만 복구했습니다.")
+                            except:
+                                st.error("❌ AI 응답을 처리할 수 없습니다. 다시 시도해주세요.")
+                                st.stop()
+
+                        verify_result = json.loads(json_str)
+
+                        # 5. 결과 표시
+                        found = verify_result.get("found_in_data", False)
+                        answer = verify_result.get("answer", "")
+                        evidence = verify_result.get("evidence", "")
+                        confidence = verify_result.get("confidence", "중간")
+
+                        if not found:
+                            st.warning("⚠️ 학습 데이터에서 관련 정보를 찾지 못했습니다.")
+                            st.info("💡 관련 부서에 문의하는 것을 권장합니다.")
+                        else:
+                            if "의도된" in answer:
+                                st.success(f"✅ {answer}")
+                            elif "버그" in answer:
+                                st.error(f"⚠️ {answer}")
+                            else:
+                                st.info(f"ℹ️ {answer}")
+
+                            st.markdown(f"**신뢰도**: {confidence}")
+                            
+                            with st.expander("📋 근거 데이터", expanded=True):
+                                st.write(evidence)
+
+                    except Exception as e:
+                        st.error(f"❌ 확인 실패: {str(e)}")
+
+# 키워드 검색 페이지
+elif page == "keyword":
+    st.header("🔍 키워드 검색")
+    st.markdown('<a href="/" target="_self">🏠 홈으로 돌아가기</a>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.info("💡 학습 데이터에서 키워드를 빠르게 검색합니다. (AI 사용 안 함)")
+
+    # 검색 입력
+    keyword = st.text_input(
+        "검색 키워드",
+        placeholder="예: 쿠폰, 결제, 배송",
+        key="keyword_input"
+    )
+
+    # 검색 대상 선택
+    search_target = st.radio(
+        "검색 대상",
+        ["테스트 케이스", "기획 문서", "전체"],
+        horizontal=True
+    )
+
+    if st.button("🔍 검색", type="primary"):
+        if not keyword:
+            st.warning("⚠️ 검색 키워드를 입력해주세요!")
+        else:
+            supabase = get_supabase_client()
+            if not supabase:
+                st.error("❌ Supabase 연결 실패")
+            else:
+                with st.spinner(f"'{keyword}' 검색 중..."):
+                    results_tc = []
+                    results_doc = []
+
+                    # 테스트 케이스 검색 (limit 없음)
+                    if search_target in ["테스트 케이스", "전체"]:
+                        try:
+                            # ILIKE는 대소문자 구분 없는 LIKE
+                            result = supabase.table(TABLE_NAME)\
+                                .select('*')\
+                                .or_(f"name.ilike.%{keyword}%,description.ilike.%{keyword}%,category.ilike.%{keyword}%")\
+                                .execute()
+                            results_tc = result.data
+                        except Exception as e:
+                            st.error(f"테스트 케이스 검색 오류: {str(e)}")
+
+                    # 기획 문서 검색
+                    if search_target in ["기획 문서", "전체"]:
+                        try:
+                            result = supabase.table(SPEC_TABLE_NAME)\
+                                .select('*')\
+                                .or_(f"title.ilike.%{keyword}%,content.ilike.%{keyword}%")\
+                                .execute()
+                            results_doc = result.data
+                        except Exception as e:
+                            st.error(f"기획 문서 검색 오류: {str(e)}")
+
+                    # 결과 표시
+                    total_count = len(results_tc) + len(results_doc)
+                    
+                    if total_count == 0:
+                        st.warning(f"⚠️ '{keyword}' 검색 결과가 없습니다.")
+                    else:
+                        st.success(f"✅ 총 {total_count}개 발견")
+
+                        # 테스트 케이스 결과
+                        if results_tc:
+                            st.markdown(f"### 📝 테스트 케이스 ({len(results_tc)}개)")
+                            for tc in results_tc:  # 전체 표시
+                                with st.expander(f"[{tc.get('category', '미분류')}] {tc.get('name', '제목 없음')}"):
+                                    st.write(f"**설명**: {tc.get('description', '')}")
+                                    if tc.get('link'):
+                                        st.write(f"**링크**: {tc.get('link')}")
+
+                        # 기획 문서 결과
+                        if results_doc:
+                            st.markdown(f"### 📚 기획 문서 ({len(results_doc)}개)")
+                            for doc in results_doc:  # 전체 표시
+                                with st.expander(f"[{doc.get('doc_type', '기타')}] {doc.get('title', '제목 없음')}"):
+                                    st.write(f"**내용**: {doc.get('content', '')[:300]}...")
+                                    if doc.get('link'):
+                                        st.write(f"**링크**: {doc.get('link')}")
