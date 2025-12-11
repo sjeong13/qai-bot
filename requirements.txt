@@ -1,0 +1,7 @@
+streamlit
+supabase
+google-generativeai
+pandas
+openpyxl
+python-dotenv
+numpy  # ⭐ 코사인 유사도 계산용 (추가)
