@@ -1904,7 +1904,7 @@ elif page == "verify":
                     st.warning("⚠️ 학습 데이터에서 관련 정보를 찾을 수 없습니다.")
                 else:
                     # 검색 결과 수 표시
-                    st.info(f"📊 검색 결과: 테스트 케이스 {len(relevant_cases)}개, 기획 문서 {len(spec_docs
+                    st.info(f"📊 검색 결과: 테스트 케이스 {len(relevant_cases)}개, 기획 문서 {len(spec_docs)}개")
                     
                     # 3. AI 프롬프트 (추론 금지!)
                     test_cases_str = json.dumps(
