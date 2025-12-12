@@ -618,597 +618,6 @@ elif page == "spec_docs":
         st.error("❌ Supabase 연결 실패")
 
 
-# 메인 페이지
-else:
-    # 사이드바
-    with st.sidebar:
-        st.header("🙌 WELCOME")
-
-        # 연결 상태 표시
-        if get_supabase_client():
-            st.success("☁️ Supabase 연결됨")
-        else:
-            st.error("❌ Supabase 연결 실패")
-
-        # 추가: 하이브리드 검색 설정 표시
-        with st.expander("⚙️ 검색 설정", expanded=False):
-            st.info(f"""
-            **검색 방식**: {RERANK_METHOD.upper()}  
-            **1차 검색**: {INITIAL_SEARCH_COUNT}개
-            **최종 선택**: {FINAL_SEARCH_COUNT}개
-            """)
-
-        st.markdown("---")
-        
-        # 탭으로 구분
-        tab1, tab2 = st.tabs(["📝 테스트 케이스", "📚 기획 문서"])
-        
-        # ============================================
-        # 📝 탭 1: 테스트 케이스 추가
-        # ============================================
-        with tab1:
-            with st.expander("➕ [QA팀 전용 버튼]\n테스트 케이스 추가", expanded=False):
-                st.markdown("### 📝 테스트 케이스 입력")
-                st.info("💡 3가지 방법 중 편한 방식으로 테스트 케이스를 추가하세요!")
-                
-                # 세션 스테이트에 편집용 데이터프레임 초기화
-                if 'edit_df' not in st.session_state:
-                    st.session_state.edit_df = pd.DataFrame({
-                        'NO': [''],
-                        'CATEGORY': [''],
-                        'DEPTH 1': [''],
-                        'DEPTH 2': [''],
-                        'DEPTH 3': [''],
-                        'PRE-CONDITION': [''],
-                        'STEP': [''],
-                        'EXPECT RESULT': ['']
-                    })
-                
-                # ========== 방법 1: 표 형식 입력 ==========
-                st.markdown("**방법 1: 표에서 직접 입력/편집**")
-                
-                # 행 추가/삭제 버튼
-                col1, col2 = st.columns([1, 1])
-                with col1:
-                    if st.button("➕ 행 추가", key="add_row_tc"):
-                        new_row = pd.DataFrame({
-                            'NO': [''],
-                            'CATEGORY': [''],
-                            'DEPTH 1': [''],
-                            'DEPTH 2': [''],
-                            'DEPTH 3': [''],
-                            'PRE-CONDITION': [''],
-                            'STEP': [''],
-                            'EXPECT RESULT': ['']
-                        })
-                        st.session_state.edit_df = pd.concat([st.session_state.edit_df, new_row], ignore_index=True)
-                        st.rerun()
-                
-                with col2:
-                    if st.button("🗑️ 모두 지우기", key="clear_tc"):
-                        st.session_state.edit_df = pd.DataFrame({
-                            'NO': [''],
-                            'CATEGORY': [''],
-                            'DEPTH 1': [''],
-                            'DEPTH 2': [''],
-                            'DEPTH 3': [''],
-                            'PRE-CONDITION': [''],
-                            'STEP': [''],
-                            'EXPECT RESULT': ['']
-                        })
-                        st.rerun()
-
-                # 데이터 에디터를 위한 고유 키 생성
-                if 'editor_key' not in st.session_state:
-                    st.session_state.editor_key = 0
-                
-                # 데이터 에디터 표시
-                edited_df = st.data_editor(
-                    st.session_state.edit_df,
-                    use_container_width=True,
-                    num_rows="dynamic",
-                    hide_index=True,
-                    column_config={
-                        "NO": st.column_config.TextColumn("NO", width="small", help="번호"),
-                        "CATEGORY": st.column_config.TextColumn("CATEGORY", width="medium", help="카테고리 (필수)"),
-                        "DEPTH 1": st.column_config.TextColumn("DEPTH 1", width="medium", help="대분류 (필수)"),
-                        "DEPTH 2": st.column_config.TextColumn("DEPTH 2", width="medium", help="중분류 (선택)"),
-                        "DEPTH 3": st.column_config.TextColumn("DEPTH 3", width="medium", help="소분류 (선택)"),
-                        "PRE-CONDITION": st.column_config.TextColumn("PRE-CONDITION", width="large", help="사전 조건 (선택)"),
-                        "STEP": st.column_config.TextColumn("STEP", width="large", help="수행 단계"),
-                        "EXPECT RESULT": st.column_config.TextColumn("EXPECT RESULT", width="large", help="예상 결과"),
-                    },
-                    key=f"test_case_editor_{st.session_state.editor_key}"
-                )
-                # 변경사항 즉시 반영
-                if not edited_df.equals(st.session_state.edit_df):
-                    st.session_state.edit_df = edited_df.copy()
-                    st.session_state.editor_key += 1
-                    st.rerun()
-                
-                st.session_state.edit_df = edited_df
-                
-                # 표 형식 저장 버튼
-                if st.button("💾 표 형식 저장", type="primary", disabled=(len(edited_df) == 0), key="save_table_tc"):
-                    if len(edited_df) > 0:
-                        # 그룹 ID 생성
-                        group_id = f"table_group_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-                        # 표 데이터 준비
-                        table_data = []
-                        for index, row in edited_df.iterrows():
-                            if pd.isna(row['CATEGORY']) or row['CATEGORY'] == '' or pd.isna(row['DEPTH 1']) or row['DEPTH 1'] == '':
-                                continue
-            
-                            table_data.append({
-                                'NO': str(row['NO']) if row['NO'] and str(row['NO']).strip() else '',
-                                'CATEGORY': str(row['CATEGORY']),
-                                'DEPTH 1': str(row['DEPTH 1']),
-                                'DEPTH 2': str(row.get('DEPTH 2', '')),
-                                'DEPTH 3': str(row.get('DEPTH 3', '')),
-                                'PRE-CONDITION': str(row.get('PRE-CONDITION', '')),
-                                'STEP': str(row.get('STEP', '')),
-                                'EXPECT RESULT': str(row.get('EXPECT RESULT', ''))
-                            })
-        
-                        if table_data:
-                            # Supabase에 저장 (개별 케이스로 쪼갬!)
-                            group_test = {
-                                "group_id": group_id,
-                                "input_type": "table_group",
-                                "category": "입력 그룹",
-                                "name": f"({len(table_data)}개)",
-                                "table_data": table_data
-                            }
-            
-                            with st.spinner(f"{len(table_data)}개 케이스 저장 중..."):
-                                saved_count = save_test_case_to_supabase(group_test)
-            
-                            if saved_count > 0:
-                                # 1. 캐시 클리어
-                                st.cache_data.clear()
-
-                                # 2. DB 반영 대기 (선택사항)
-                                import time
-                                time.sleep(0.5)
-                                
-                                # 3. 저장 직후 카운트 업데이트
-                                supabase = get_supabase_client()
-                                if supabase:
-                                    try:
-                                        result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
-                                        new_count = result.count  # count 사용
-
-                                        # 플래그 설정 (rerun 후 초기화 트리거)
-                                        st.session_state.force_reload_tc_count = True
-                                        st.session_state.tc_count = new_count
-                                    except Exception as e:
-                                        st.error(f"카운트 업데이트 실패: {str(e)}")
-
-                                # 세션 초기화 (데이터프레임 리셋)
-                                st.session_state.edit_df = pd.DataFrame({
-                                    'NO': [''],
-                                    'CATEGORY': [''],
-                                    'DEPTH 1': [''],
-                                    'DEPTH 2': [''],
-                                    'DEPTH 3': [''],
-                                    'PRE-CONDITION': [''],
-                                    'STEP': [''],
-                                    'EXPECT RESULT': ['']
-                                })
-                                st.success(f"✅ {saved_count}개의 테스트 케이스가 Supabase에 저장되었습니다!")
-                                st.rerun()
-                            else:
-                                st.error("❌ 저장 실패!")
-                        else:
-                            st.warning("유효한 테스트 케이스가 없습니다. CATEGORY와 DEPTH 1은 필수 항목입니다.")
-                
-                st.markdown("---")
-                
-                # ========== 방법 2: 줄글 형식 (자유 입력) ==========
-                st.markdown("**방법 2: 줄글 형식 (자유 입력)**")
-                st.info("💡 테스트 케이스를 자유롭게 작성하고 AI가 학습할 수 있도록 저장하세요!")
-
-                # 세션 스테이트 초기값 설정
-                if 'tab1_tc_free_title' not in st.session_state:
-                    st.session_state.tab1_tc_free_title = ""
-                if 'tab1_tc_free_link' not in st.session_state:
-                    st.session_state.tab1_tc_free_link = ""
-                if 'tab1_tc_free_content' not in st.session_state:
-                    st.session_state.tab1_tc_free_content = ""
-                if 'tab1_tc_free_category' not in st.session_state:
-                    st.session_state.tab1_tc_free_category = ""
-
-                # 초기화 플래그 체크 (이전 저장 후 rerun되면 초기화)
-                if st.session_state.get('tab1_tc_reset_flag', False):
-                    st.session_state.tab1_tc_free_title = ""
-                    st.session_state.tab1_tc_free_link = ""
-                    st.session_state.tab1_tc_free_content = ""
-                    st.session_state.tab1_tc_free_category = ""
-                    st.session_state.tab1_tc_reset_flag = False
-                
-                st.text_input(
-                    "제목 *",
-                    placeholder="예: 쿠폰 지정 발행 테스트 설계",
-                    key="tab1_tc_free_title"
-                )
-
-                st.text_input(
-                    "링크 URL",
-                    placeholder="https://www.notion.so/imweb/...",
-                    key="tab1_tc_free_link"
-                )
-                
-                st.text_area(
-                    "내용 *",
-                    placeholder="테스트 설계 내용을 자유롭게 작성하세요.\n\n[예시]\n1. BO에서 쿠폰 생성\n2. 특정 회원에게 쿠폰 지정 발행\n3. FO에서 쿠폰 사용 가능 여부 확인\n...",
-                    height=300,
-                    key="tab1_tc_free_content"
-                )
-                
-                st.text_input(
-                    "카테고리 *",
-                    placeholder="쿠폰",
-                    key="tab1_tc_free_category"
-                )
-                
-                # 저장 버튼 및 로직
-                if st.button("💾 줄글 형식 저장", type="primary", key="tab1_save_free_form_tc"):
-                    # 세션 스테이트에서 직접 값 가져오기
-                    if not st.session_state.tab1_tc_free_title or not st.session_state.tab1_tc_free_content or not st.session_state.tab1_tc_free_category:
-                        st.warning("⚠️ 모든 항목을 입력해주세요!")
-                    else:
-                        # 줄글 형식으로 저장
-                        free_form_test = {
-                            "category": st.session_state.tab1_tc_free_category if st.session_state.tab1_tc_free_category else "기타",
-                            "name": st.session_state.tab1_tc_free_title,
-                            "link": st.session_state.tab1_tc_free_link,
-                            "description": st.session_state.tab1_tc_free_content,
-                            "input_type": "free_form"
-                        }
-                        with st.spinner("저장 중..."):
-                            saved_count = save_test_case_to_supabase(free_form_test)
-
-                        if saved_count > 0:
-                            # 1. 캐시 클리어
-                            st.cache_data.clear()
-
-                            # 2. DB 반영 대기
-                            import time
-                            time.sleep(0.5)
-                            
-                            # 저장 직후 카운트 업데이트
-                            supabase = get_supabase_client()
-                            if supabase:
-                                try:
-                                    result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
-                                    new_count = result.count  # count 사용
-
-                                    # 플래그 설정
-                                    st.session_state.force_reload_tc_count = True
-                                    st.session_state.tc_count = new_count
-
-                                except Exception as e:
-                                    st.error(f"카운트 업데이트 실패: {str(e)}")
-                            
-                            # 초기화 플래그 설정 후 rerun
-                            st.session_state.tab1_tc_reset_flag = True
-                                    
-                            st.success(f"✅ '{free_form_test['name']}' 테스트 케이스가 Supabase에 저장되었습니다!")
-                            st.rerun()
-                        else:
-                            st.error("❌ 저장 실패!")
-
-                st.markdown("---")
-                
-                # ========== 방법 3: CSV/Excel 파일 업로드 ==========
-                st.markdown("**방법 3: CSV/Excel 파일 업로드**")
-                uploaded_file = st.file_uploader("CSV 또는 Excel 파일 선택", type=['csv', 'xlsx'], key="upload_tc")
-                
-                if uploaded_file is not None:
-                    try:
-                        if uploaded_file.name.endswith('.csv'):
-                            df = pd.read_csv(uploaded_file)
-                        else:
-                            df = pd.read_excel(uploaded_file)
-                        
-                        required_columns = ['NO', 'CATEGORY', 'DEPTH 1', 'DEPTH 2', 'DEPTH 3', 'PRE-CONDITION', 'STEP', 'EXPECT RESULT']
-                        
-                        if not all(col in df.columns for col in required_columns):
-                            st.warning("컬럼명이 일치하지 않습니다. 데이터를 확인해주세요.")
-                            st.dataframe(df.head())
-                        else:
-                            # st.session_state.edit_df = df[required_columns].fillna('')
-                            
-                            # 모든 컬럼을 문자열로 변환 후 빈 값 처리
-                            st.session_state.edit_df = df[required_columns].astype(str).replace('nan', '').replace('None', '')
-                            st.success(f"✅ {len(df)}개 행이 로드되었습니다!")
-                            st.info("👆 방법 1 로 올라가 '💾 표 형식 저장' 버튼을 눌러주세요!")
-                            
-                    except Exception as e:
-                        st.error(f"파일 읽기 오류: {str(e)}")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # 테스트 케이스 요약
-            st.subheader(f"📋 저장된 테스트 케이스")
-
-            # 세션 스테이트 우선 사용
-            if 'tc_count' in st.session_state:
-                total_count = st.session_state.tc_count
-            else:
-
-                # Supabase에서 실시간 조회
-                supabase = get_supabase_client()
-                if supabase:
-                    try:
-                        # 전체 개수
-                        result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
-                        total_count = result.count  # ✅ count 사용
-                        st.session_state.tc_count = total_count
-                    except Exception as e:
-                        st.error(f"통계 조회 실패: {str(e)}")
-                        total_count = 0
-
-                else:
-                    total_count = 0
-
-            st.metric("Supabase 전체 케이스 수", f"{total_count}개")
-
-            # 카테고리별 통계
-            if total_count > 0:
-                # 추가: 카테고리 통계 위해 필요시 다시 조회
-                if 'tc_count' in st.session_state:
-                    supabase = get_supabase_client()
-                    if supabase:
-                        result = supabase.table(TABLE_NAME).select('id, category, data').execute()
-                        categories = {}
-                        for row in result.data:
-                            cat = row.get('category', '미분류')
-                            categories[cat] = categories.get(cat, 0) + 1
-
-                        with st.expander("📊 카테고리별 통계", expanded=False):
-                            for cat, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
-                                st.write(f"**{cat}**: {count}개")
-
-            # 새 탭으로 열기 링크
-            if total_count > 0:
-                st.markdown(
-                    '<a href="?page=test_cases" target="_blank" style="text-decoration: none;">'
-                    '<button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d0d0d0; border-radius: 5px; cursor: pointer;">'
-                    '📝 전체 테스트 케이스 보기 (새 탭) →'
-                    '</button></a>',
-                    unsafe_allow_html=True
-                )
-
-       
-        # 개발자 도구
-        with tab1:
-            st.markdown("---")
-            with st.expander("🔧 개발자 도구", expanded=False):
-                if st.button("🔍 사용 가능한 Gemini 모델 확인"):
-                    try:
-                        api_key = os.environ.get("GOOGLE_API_KEY")
-                        genai.configure(api_key=api_key)
-                
-                        models = genai.list_models()
-                        st.write("### 사용 가능한 모델 목록:")
-                        for model in models:
-                            if 'generateContent' in model.supported_generation_methods:
-                                st.write(f"✅ {model.name}")
-                    except Exception as e:
-                        st.error(f"오류: {str(e)}")
-        
-        # ============================================
-        # 📚 탭 2: 기획 문서 추가
-        # ============================================
-        with tab2:
-            with st.expander("➕ [QA팀 전용 버튼]\n기획 문서 추가", expanded=False):
-                st.markdown("### 📄 기획 문서 입력")
-                st.info("💡 노션, Jira에서 작성한 문서를 복사해서 붙여넣으세요.\nAI가 이 내용을 학습합니다!")
-
-                # 세션 스테이트 초기값 설정
-                if 'tab2_spec_title' not in st.session_state:
-                    st.session_state.tab2_spec_title = ""
-                if 'tab2_spec_type' not in st.session_state:
-                    st.session_state.tab2_spec_type = "Notion"
-                if 'tab2_spec_link' not in st.session_state:
-                    st.session_state.tab2_spec_link = ""
-                if 'tab2_spec_content' not in st.session_state:
-                    st.session_state.tab2_spec_content = ""
-
-                # 초기화 플래그 체크
-                if st.session_state.get('tab2_spec_reset_flag', False):
-                    st.session_state.tab2_spec_title = ""
-                    st.session_state.tab2_spec_type = "Notion"
-                    st.session_state.tab2_spec_link = ""
-                    st.session_state.tab2_spec_content = ""
-                    st.session_state.tab2_spec_reset_flag = False
-
-                # 문서 제목
-                st.text_input(
-                    "문서 제목 *",
-                    placeholder="예: 공동구매 기능 스펙 문서",
-                    key="tab2_spec_title"
-                )
-                
-                # 문서 유형
-                st.selectbox(
-                    "문서 유형 *",
-                    ["Notion", "Jira", "기타"],
-                    key="tab2_spec_type"
-                )
-
-                # 링크 URL
-                st.text_input(
-                    "링크 URL *",
-                    placeholder="https://www.notion.so/imweb/...",
-                    key="tab2_spec_link"
-                )
-                
-                # 문서 내용
-                st.text_area(
-                    "문서 내용 *",
-                    placeholder="기획 의도, 스펙, 요구사항 등을 자유롭게 붙여넣으세요.\n\n예:\n[기획 배경]\n현재 공동구매 기능은...\n\n[주요 기능]\n1. 브랜드 정보 입력 모달\n2. 캠페인 생성 기능\n...",
-                    height=300,
-                    key="tab2_spec_content"
-                )
-                
-                # 저장 버튼
-                if st.button("💾 기획 문서 저장", type="primary", key="tab2_save_spec"):
-                    if not st.session_state.tab2_spec_title or not st.session_state.tab2_spec_type or not st.session_state.tab2_spec_link or not st.session_state.tab2_spec_content:
-                        st.warning("⚠️ 모든 항목을 입력해주세요!")
-                    else:
-                        new_spec = {
-                            "title": st.session_state.tab2_spec_title,
-                            "doc_type": st.session_state.tab2_spec_type,
-                            "link": st.session_state.tab2_spec_link,
-                            "content": st.session_state.tab2_spec_content,
-                        }
-                        
-                        with st.spinner("저장 중..."):
-                            success = save_spec_doc_to_supabase(new_spec)
-
-                        if success:
-                            # 1. 캐시 클리어
-                            st.cache_data.clear()
-
-                            # 2. DB 반영 대기
-                            import time
-                            time.sleep(0.5)
-                            
-                            # 3. 저장 직후 카운트 업데이트 (강제)
-                            supabase = get_supabase_client()
-                            if supabase:
-                                try:
-                                    result = supabase.table(SPEC_TABLE_NAME).select('id', count='exact').execute()
-                                    new_count = result.count  # count 사용
-
-                                    # 플래그 설정
-                                    st.session_state.force_reload_doc_count = True
-                                    st.session_state.doc_count = new_count
-
-                                except Exception as e:
-                                    st.error(f"카운트 업데이트 실패: {str(e)}")
-                                    
-                            # 초기화 플래그 설정 후 rerun
-                            st.session_state.tab2_spec_reset_flag = True
-            
-                            st.success(f"✅ 기획 문서가 Supabase에 저장되었습니다!")
-                            st.rerun()
-
-                        else:
-                            st.error("❌ 저장 실패!")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # 기획 문서 요약
-            st.subheader(f"📄 저장된 기획 문서")
-
-            # 세션 스테이트 우선 사용
-            if 'doc_count' in st.session_state:
-                total_count = st.session_state.doc_count
-
-            else:
-                # Supabase에서 조회
-                supabase = get_supabase_client()
-                if supabase:
-                    try:
-                        result = supabase.table(SPEC_TABLE_NAME).select('id, title, doc_type').execute()
-                        total_count = len(result.data)
-                        st.session_state.doc_count = total_count
-                    except Exception as e:
-                        st.error(f"문서 통계 조회 실패: {str(e)}")
-                        total_count = 0
-                else:
-                    total_count = 0
-
-            st.metric("전체 문서 수", f"{total_count}개")
-
-            # 새 탭으로 열기 링크
-            if total_count > 0:
-                st.markdown(
-                    '<a href="?page=spec_docs" target="_blank" style="text-decoration: none;">'
-                    '<button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d0d0d0; border-radius: 5px; cursor: pointer;">'
-                    '📚 전체 기획 문서 보기 (새 탭) →'
-                    '</button></a>',
-                    unsafe_allow_html=True
-                )
-
-
-    # ============================================
-    # 메인 영역 - 기능 선택
-    # ============================================
-    st.header("🎯 어떤 기능을 사용하시겠어요?")
-    st.markdown("---")
-    
-    # 4개 버튼을 2x2 그리드로 배치
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button(
-            "👾 테스트 케이스 추천받기",
-            use_container_width=True,
-            help="AI가 유사한 케이스를 찾아 테스트 케이스를 생성해줍니다"
-        ):
-            st.query_params.update({"page": "recommend"})
-            st.rerun()
-
-        if st.button(
-            "🔍 키워드 검색",
-            use_container_width=True,
-            help="학습 데이터 안에서 키워드를 검색합니다"
-        ):
-            st.query_params.update({"page": "keyword"})
-            st.rerun()
-
-    with col2:
-        if st.button(
-            "⚠️ 사전 리스크 확인",
-            use_container_width=True,
-            help="AI가 리스크와 사이드 이펙트를 분석해줍니다"
-        ):
-            st.query_params.update({"page": "risk"})
-            st.rerun()
-
-        if st.button(
-            "✅ 의도된 동작인지 확인",
-            use_container_width=True,
-            help="학습 데이터 기반으로 버그 가능성을 판단합니다"
-        ):
-            st.query_params.update({"page": "verify"})
-            st.rerun()
-
-    # 안내 메시지
-    st.markdown("---")
-    st.info("""
-    💡 **기능 설명**
-    - 📝 **테스트 케이스 추천**: AI가 유사 케이스를 찾아 신규 테스트 케이스 생성
-    - ⚠️ **사전 리스크 확인**: 기능 추가/수정 시 발생 가능한 리스크 분석
-    - ✅ **의도된 동작 확인**: 특정 동작이 버그인지 의도된 것인지 판단 (AI 추론X)
-    - 🔍 **키워드 검색**: 학습 데이터에서 빠르게 검색
-    """)
-
-    # 통계 표시
-    tc_count = st.session_state.get('tc_count', 0)
-    doc_count = st.session_state.get('doc_count', 0)
-    
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("📊 테스트 케이스", f"{tc_count}개")
-    with col_b:
-        st.metric("📚 기획 문서", f"{doc_count}개")
-    with col_c:
-        st.metric("🔍 검색 방식", RERANK_METHOD.upper())
-
 # ============================================
 # 1. 테스트 케이스 추천 페이지
 # ============================================
@@ -2087,3 +1496,594 @@ elif page == "keyword":
                                     st.write(f"**내용**: {doc.get('content', '')[:300]}...")
                                     if doc.get('link'):
                                         st.write(f"**링크**: {doc.get('link')}")
+
+# 메인 페이지
+else:
+    # 사이드바
+    with st.sidebar:
+        st.header("🙌 WELCOME")
+
+        # 연결 상태 표시
+        if get_supabase_client():
+            st.success("☁️ Supabase 연결됨")
+        else:
+            st.error("❌ Supabase 연결 실패")
+
+        # 추가: 하이브리드 검색 설정 표시
+        with st.expander("⚙️ 검색 설정", expanded=False):
+            st.info(f"""
+            **검색 방식**: {RERANK_METHOD.upper()}  
+            **1차 검색**: {INITIAL_SEARCH_COUNT}개
+            **최종 선택**: {FINAL_SEARCH_COUNT}개
+            """)
+
+        st.markdown("---")
+        
+        # 탭으로 구분
+        tab1, tab2 = st.tabs(["📝 테스트 케이스", "📚 기획 문서"])
+        
+        # ============================================
+        # 📝 탭 1: 테스트 케이스 추가
+        # ============================================
+        with tab1:
+            with st.expander("➕ [QA팀 전용 버튼]\n테스트 케이스 추가", expanded=False):
+                st.markdown("### 📝 테스트 케이스 입력")
+                st.info("💡 3가지 방법 중 편한 방식으로 테스트 케이스를 추가하세요!")
+                
+                # 세션 스테이트에 편집용 데이터프레임 초기화
+                if 'edit_df' not in st.session_state:
+                    st.session_state.edit_df = pd.DataFrame({
+                        'NO': [''],
+                        'CATEGORY': [''],
+                        'DEPTH 1': [''],
+                        'DEPTH 2': [''],
+                        'DEPTH 3': [''],
+                        'PRE-CONDITION': [''],
+                        'STEP': [''],
+                        'EXPECT RESULT': ['']
+                    })
+                
+                # ========== 방법 1: 표 형식 입력 ==========
+                st.markdown("**방법 1: 표에서 직접 입력/편집**")
+                
+                # 행 추가/삭제 버튼
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("➕ 행 추가", key="add_row_tc"):
+                        new_row = pd.DataFrame({
+                            'NO': [''],
+                            'CATEGORY': [''],
+                            'DEPTH 1': [''],
+                            'DEPTH 2': [''],
+                            'DEPTH 3': [''],
+                            'PRE-CONDITION': [''],
+                            'STEP': [''],
+                            'EXPECT RESULT': ['']
+                        })
+                        st.session_state.edit_df = pd.concat([st.session_state.edit_df, new_row], ignore_index=True)
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🗑️ 모두 지우기", key="clear_tc"):
+                        st.session_state.edit_df = pd.DataFrame({
+                            'NO': [''],
+                            'CATEGORY': [''],
+                            'DEPTH 1': [''],
+                            'DEPTH 2': [''],
+                            'DEPTH 3': [''],
+                            'PRE-CONDITION': [''],
+                            'STEP': [''],
+                            'EXPECT RESULT': ['']
+                        })
+                        st.rerun()
+
+                # 데이터 에디터를 위한 고유 키 생성
+                if 'editor_key' not in st.session_state:
+                    st.session_state.editor_key = 0
+                
+                # 데이터 에디터 표시
+                edited_df = st.data_editor(
+                    st.session_state.edit_df,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    hide_index=True,
+                    column_config={
+                        "NO": st.column_config.TextColumn("NO", width="small", help="번호"),
+                        "CATEGORY": st.column_config.TextColumn("CATEGORY", width="medium", help="카테고리 (필수)"),
+                        "DEPTH 1": st.column_config.TextColumn("DEPTH 1", width="medium", help="대분류 (필수)"),
+                        "DEPTH 2": st.column_config.TextColumn("DEPTH 2", width="medium", help="중분류 (선택)"),
+                        "DEPTH 3": st.column_config.TextColumn("DEPTH 3", width="medium", help="소분류 (선택)"),
+                        "PRE-CONDITION": st.column_config.TextColumn("PRE-CONDITION", width="large", help="사전 조건 (선택)"),
+                        "STEP": st.column_config.TextColumn("STEP", width="large", help="수행 단계"),
+                        "EXPECT RESULT": st.column_config.TextColumn("EXPECT RESULT", width="large", help="예상 결과"),
+                    },
+                    key=f"test_case_editor_{st.session_state.editor_key}"
+                )
+                # 변경사항 즉시 반영
+                if not edited_df.equals(st.session_state.edit_df):
+                    st.session_state.edit_df = edited_df.copy()
+                    st.session_state.editor_key += 1
+                    st.rerun()
+                
+                st.session_state.edit_df = edited_df
+                
+                # 표 형식 저장 버튼
+                if st.button("💾 표 형식 저장", type="primary", disabled=(len(edited_df) == 0), key="save_table_tc"):
+                    if len(edited_df) > 0:
+                        # 그룹 ID 생성
+                        group_id = f"table_group_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+                        # 표 데이터 준비
+                        table_data = []
+                        for index, row in edited_df.iterrows():
+                            if pd.isna(row['CATEGORY']) or row['CATEGORY'] == '' or pd.isna(row['DEPTH 1']) or row['DEPTH 1'] == '':
+                                continue
+            
+                            table_data.append({
+                                'NO': str(row['NO']) if row['NO'] and str(row['NO']).strip() else '',
+                                'CATEGORY': str(row['CATEGORY']),
+                                'DEPTH 1': str(row['DEPTH 1']),
+                                'DEPTH 2': str(row.get('DEPTH 2', '')),
+                                'DEPTH 3': str(row.get('DEPTH 3', '')),
+                                'PRE-CONDITION': str(row.get('PRE-CONDITION', '')),
+                                'STEP': str(row.get('STEP', '')),
+                                'EXPECT RESULT': str(row.get('EXPECT RESULT', ''))
+                            })
+        
+                        if table_data:
+                            # Supabase에 저장 (개별 케이스로 쪼갬!)
+                            group_test = {
+                                "group_id": group_id,
+                                "input_type": "table_group",
+                                "category": "입력 그룹",
+                                "name": f"({len(table_data)}개)",
+                                "table_data": table_data
+                            }
+            
+                            with st.spinner(f"{len(table_data)}개 케이스 저장 중..."):
+                                saved_count = save_test_case_to_supabase(group_test)
+            
+                            if saved_count > 0:
+                                # 1. 캐시 클리어
+                                st.cache_data.clear()
+
+                                # 2. DB 반영 대기 (선택사항)
+                                import time
+                                time.sleep(0.5)
+                                
+                                # 3. 저장 직후 카운트 업데이트
+                                supabase = get_supabase_client()
+                                if supabase:
+                                    try:
+                                        result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
+                                        new_count = result.count  # count 사용
+
+                                        # 플래그 설정 (rerun 후 초기화 트리거)
+                                        st.session_state.force_reload_tc_count = True
+                                        st.session_state.tc_count = new_count
+                                    except Exception as e:
+                                        st.error(f"카운트 업데이트 실패: {str(e)}")
+
+                                # 세션 초기화 (데이터프레임 리셋)
+                                st.session_state.edit_df = pd.DataFrame({
+                                    'NO': [''],
+                                    'CATEGORY': [''],
+                                    'DEPTH 1': [''],
+                                    'DEPTH 2': [''],
+                                    'DEPTH 3': [''],
+                                    'PRE-CONDITION': [''],
+                                    'STEP': [''],
+                                    'EXPECT RESULT': ['']
+                                })
+                                st.success(f"✅ {saved_count}개의 테스트 케이스가 Supabase에 저장되었습니다!")
+                                st.rerun()
+                            else:
+                                st.error("❌ 저장 실패!")
+                        else:
+                            st.warning("유효한 테스트 케이스가 없습니다. CATEGORY와 DEPTH 1은 필수 항목입니다.")
+                
+                st.markdown("---")
+                
+                # ========== 방법 2: 줄글 형식 (자유 입력) ==========
+                st.markdown("**방법 2: 줄글 형식 (자유 입력)**")
+                st.info("💡 테스트 케이스를 자유롭게 작성하고 AI가 학습할 수 있도록 저장하세요!")
+
+                # 세션 스테이트 초기값 설정
+                if 'tab1_tc_free_title' not in st.session_state:
+                    st.session_state.tab1_tc_free_title = ""
+                if 'tab1_tc_free_link' not in st.session_state:
+                    st.session_state.tab1_tc_free_link = ""
+                if 'tab1_tc_free_content' not in st.session_state:
+                    st.session_state.tab1_tc_free_content = ""
+                if 'tab1_tc_free_category' not in st.session_state:
+                    st.session_state.tab1_tc_free_category = ""
+
+                # 초기화 플래그 체크 (이전 저장 후 rerun되면 초기화)
+                if st.session_state.get('tab1_tc_reset_flag', False):
+                    st.session_state.tab1_tc_free_title = ""
+                    st.session_state.tab1_tc_free_link = ""
+                    st.session_state.tab1_tc_free_content = ""
+                    st.session_state.tab1_tc_free_category = ""
+                    st.session_state.tab1_tc_reset_flag = False
+                
+                st.text_input(
+                    "제목 *",
+                    placeholder="예: 쿠폰 지정 발행 테스트 설계",
+                    key="tab1_tc_free_title"
+                )
+
+                st.text_input(
+                    "링크 URL",
+                    placeholder="https://www.notion.so/imweb/...",
+                    key="tab1_tc_free_link"
+                )
+                
+                st.text_area(
+                    "내용 *",
+                    placeholder="테스트 설계 내용을 자유롭게 작성하세요.\n\n[예시]\n1. BO에서 쿠폰 생성\n2. 특정 회원에게 쿠폰 지정 발행\n3. FO에서 쿠폰 사용 가능 여부 확인\n...",
+                    height=300,
+                    key="tab1_tc_free_content"
+                )
+                
+                st.text_input(
+                    "카테고리 *",
+                    placeholder="쿠폰",
+                    key="tab1_tc_free_category"
+                )
+                
+                # 저장 버튼 및 로직
+                if st.button("💾 줄글 형식 저장", type="primary", key="tab1_save_free_form_tc"):
+                    # 세션 스테이트에서 직접 값 가져오기
+                    if not st.session_state.tab1_tc_free_title or not st.session_state.tab1_tc_free_content or not st.session_state.tab1_tc_free_category:
+                        st.warning("⚠️ 모든 항목을 입력해주세요!")
+                    else:
+                        # 줄글 형식으로 저장
+                        free_form_test = {
+                            "category": st.session_state.tab1_tc_free_category if st.session_state.tab1_tc_free_category else "기타",
+                            "name": st.session_state.tab1_tc_free_title,
+                            "link": st.session_state.tab1_tc_free_link,
+                            "description": st.session_state.tab1_tc_free_content,
+                            "input_type": "free_form"
+                        }
+                        with st.spinner("저장 중..."):
+                            saved_count = save_test_case_to_supabase(free_form_test)
+
+                        if saved_count > 0:
+                            # 1. 캐시 클리어
+                            st.cache_data.clear()
+
+                            # 2. DB 반영 대기
+                            import time
+                            time.sleep(0.5)
+                            
+                            # 저장 직후 카운트 업데이트
+                            supabase = get_supabase_client()
+                            if supabase:
+                                try:
+                                    result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
+                                    new_count = result.count  # count 사용
+
+                                    # 플래그 설정
+                                    st.session_state.force_reload_tc_count = True
+                                    st.session_state.tc_count = new_count
+
+                                except Exception as e:
+                                    st.error(f"카운트 업데이트 실패: {str(e)}")
+                            
+                            # 초기화 플래그 설정 후 rerun
+                            st.session_state.tab1_tc_reset_flag = True
+                                    
+                            st.success(f"✅ '{free_form_test['name']}' 테스트 케이스가 Supabase에 저장되었습니다!")
+                            st.rerun()
+                        else:
+                            st.error("❌ 저장 실패!")
+
+                st.markdown("---")
+                
+                # ========== 방법 3: CSV/Excel 파일 업로드 ==========
+                st.markdown("**방법 3: CSV/Excel 파일 업로드**")
+                uploaded_file = st.file_uploader("CSV 또는 Excel 파일 선택", type=['csv', 'xlsx'], key="upload_tc")
+                
+                if uploaded_file is not None:
+                    try:
+                        if uploaded_file.name.endswith('.csv'):
+                            df = pd.read_csv(uploaded_file)
+                        else:
+                            df = pd.read_excel(uploaded_file)
+                        
+                        required_columns = ['NO', 'CATEGORY', 'DEPTH 1', 'DEPTH 2', 'DEPTH 3', 'PRE-CONDITION', 'STEP', 'EXPECT RESULT']
+                        
+                        if not all(col in df.columns for col in required_columns):
+                            st.warning("컬럼명이 일치하지 않습니다. 데이터를 확인해주세요.")
+                            st.dataframe(df.head())
+                        else:
+                            # st.session_state.edit_df = df[required_columns].fillna('')
+                            
+                            # 모든 컬럼을 문자열로 변환 후 빈 값 처리
+                            st.session_state.edit_df = df[required_columns].astype(str).replace('nan', '').replace('None', '')
+                            st.success(f"✅ {len(df)}개 행이 로드되었습니다!")
+                            st.info("👆 방법 1 로 올라가 '💾 표 형식 저장' 버튼을 눌러주세요!")
+                            
+                    except Exception as e:
+                        st.error(f"파일 읽기 오류: {str(e)}")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 테스트 케이스 요약
+            st.subheader(f"📋 저장된 테스트 케이스")
+
+            # 세션 스테이트 우선 사용
+            if 'tc_count' in st.session_state:
+                total_count = st.session_state.tc_count
+            else:
+
+                # Supabase에서 실시간 조회
+                supabase = get_supabase_client()
+                if supabase:
+                    try:
+                        # 전체 개수
+                        result = supabase.table(TABLE_NAME).select('id', count='exact').execute()
+                        total_count = result.count  # ✅ count 사용
+                        st.session_state.tc_count = total_count
+                    except Exception as e:
+                        st.error(f"통계 조회 실패: {str(e)}")
+                        total_count = 0
+
+                else:
+                    total_count = 0
+
+            st.metric("Supabase 전체 케이스 수", f"{total_count}개")
+
+            # 카테고리별 통계
+            if total_count > 0:
+                # 추가: 카테고리 통계 위해 필요시 다시 조회
+                if 'tc_count' in st.session_state:
+                    supabase = get_supabase_client()
+                    if supabase:
+                        result = supabase.table(TABLE_NAME).select('id, category, data').execute()
+                        categories = {}
+                        for row in result.data:
+                            cat = row.get('category', '미분류')
+                            categories[cat] = categories.get(cat, 0) + 1
+
+                        with st.expander("📊 카테고리별 통계", expanded=False):
+                            for cat, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
+                                st.write(f"**{cat}**: {count}개")
+
+            # 새 탭으로 열기 링크
+            if total_count > 0:
+                st.markdown(
+                    '<a href="?page=test_cases" target="_blank" style="text-decoration: none;">'
+                    '<button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d0d0d0; border-radius: 5px; cursor: pointer;">'
+                    '📝 전체 테스트 케이스 보기 (새 탭) →'
+                    '</button></a>',
+                    unsafe_allow_html=True
+                )
+
+       
+        # 개발자 도구
+        with tab1:
+            st.markdown("---")
+            with st.expander("🔧 개발자 도구", expanded=False):
+                if st.button("🔍 사용 가능한 Gemini 모델 확인"):
+                    try:
+                        api_key = os.environ.get("GOOGLE_API_KEY")
+                        genai.configure(api_key=api_key)
+                
+                        models = genai.list_models()
+                        st.write("### 사용 가능한 모델 목록:")
+                        for model in models:
+                            if 'generateContent' in model.supported_generation_methods:
+                                st.write(f"✅ {model.name}")
+                    except Exception as e:
+                        st.error(f"오류: {str(e)}")
+        
+        # ============================================
+        # 📚 탭 2: 기획 문서 추가
+        # ============================================
+        with tab2:
+            with st.expander("➕ [QA팀 전용 버튼]\n기획 문서 추가", expanded=False):
+                st.markdown("### 📄 기획 문서 입력")
+                st.info("💡 노션, Jira에서 작성한 문서를 복사해서 붙여넣으세요.\nAI가 이 내용을 학습합니다!")
+
+                # 세션 스테이트 초기값 설정
+                if 'tab2_spec_title' not in st.session_state:
+                    st.session_state.tab2_spec_title = ""
+                if 'tab2_spec_type' not in st.session_state:
+                    st.session_state.tab2_spec_type = "Notion"
+                if 'tab2_spec_link' not in st.session_state:
+                    st.session_state.tab2_spec_link = ""
+                if 'tab2_spec_content' not in st.session_state:
+                    st.session_state.tab2_spec_content = ""
+
+                # 초기화 플래그 체크
+                if st.session_state.get('tab2_spec_reset_flag', False):
+                    st.session_state.tab2_spec_title = ""
+                    st.session_state.tab2_spec_type = "Notion"
+                    st.session_state.tab2_spec_link = ""
+                    st.session_state.tab2_spec_content = ""
+                    st.session_state.tab2_spec_reset_flag = False
+
+                # 문서 제목
+                st.text_input(
+                    "문서 제목 *",
+                    placeholder="예: 공동구매 기능 스펙 문서",
+                    key="tab2_spec_title"
+                )
+                
+                # 문서 유형
+                st.selectbox(
+                    "문서 유형 *",
+                    ["Notion", "Jira", "기타"],
+                    key="tab2_spec_type"
+                )
+
+                # 링크 URL
+                st.text_input(
+                    "링크 URL *",
+                    placeholder="https://www.notion.so/imweb/...",
+                    key="tab2_spec_link"
+                )
+                
+                # 문서 내용
+                st.text_area(
+                    "문서 내용 *",
+                    placeholder="기획 의도, 스펙, 요구사항 등을 자유롭게 붙여넣으세요.\n\n예:\n[기획 배경]\n현재 공동구매 기능은...\n\n[주요 기능]\n1. 브랜드 정보 입력 모달\n2. 캠페인 생성 기능\n...",
+                    height=300,
+                    key="tab2_spec_content"
+                )
+                
+                # 저장 버튼
+                if st.button("💾 기획 문서 저장", type="primary", key="tab2_save_spec"):
+                    if not st.session_state.tab2_spec_title or not st.session_state.tab2_spec_type or not st.session_state.tab2_spec_link or not st.session_state.tab2_spec_content:
+                        st.warning("⚠️ 모든 항목을 입력해주세요!")
+                    else:
+                        new_spec = {
+                            "title": st.session_state.tab2_spec_title,
+                            "doc_type": st.session_state.tab2_spec_type,
+                            "link": st.session_state.tab2_spec_link,
+                            "content": st.session_state.tab2_spec_content,
+                        }
+                        
+                        with st.spinner("저장 중..."):
+                            success = save_spec_doc_to_supabase(new_spec)
+
+                        if success:
+                            # 1. 캐시 클리어
+                            st.cache_data.clear()
+
+                            # 2. DB 반영 대기
+                            import time
+                            time.sleep(0.5)
+                            
+                            # 3. 저장 직후 카운트 업데이트 (강제)
+                            supabase = get_supabase_client()
+                            if supabase:
+                                try:
+                                    result = supabase.table(SPEC_TABLE_NAME).select('id', count='exact').execute()
+                                    new_count = result.count  # count 사용
+
+                                    # 플래그 설정
+                                    st.session_state.force_reload_doc_count = True
+                                    st.session_state.doc_count = new_count
+
+                                except Exception as e:
+                                    st.error(f"카운트 업데이트 실패: {str(e)}")
+                                    
+                            # 초기화 플래그 설정 후 rerun
+                            st.session_state.tab2_spec_reset_flag = True
+            
+                            st.success(f"✅ 기획 문서가 Supabase에 저장되었습니다!")
+                            st.rerun()
+
+                        else:
+                            st.error("❌ 저장 실패!")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 기획 문서 요약
+            st.subheader(f"📄 저장된 기획 문서")
+
+            # 세션 스테이트 우선 사용
+            if 'doc_count' in st.session_state:
+                total_count = st.session_state.doc_count
+
+            else:
+                # Supabase에서 조회
+                supabase = get_supabase_client()
+                if supabase:
+                    try:
+                        result = supabase.table(SPEC_TABLE_NAME).select('id, title, doc_type').execute()
+                        total_count = len(result.data)
+                        st.session_state.doc_count = total_count
+                    except Exception as e:
+                        st.error(f"문서 통계 조회 실패: {str(e)}")
+                        total_count = 0
+                else:
+                    total_count = 0
+
+            st.metric("전체 문서 수", f"{total_count}개")
+
+            # 새 탭으로 열기 링크
+            if total_count > 0:
+                st.markdown(
+                    '<a href="?page=spec_docs" target="_blank" style="text-decoration: none;">'
+                    '<button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d0d0d0; border-radius: 5px; cursor: pointer;">'
+                    '📚 전체 기획 문서 보기 (새 탭) →'
+                    '</button></a>',
+                    unsafe_allow_html=True
+                )
+
+
+    # ============================================
+    # 메인 영역 - 기능 선택
+    # ============================================
+    st.header("🎯 어떤 기능을 사용하시겠어요?")
+    st.markdown("---")
+    
+    # 4개 버튼을 2x2 그리드로 배치
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button(
+            "👾 테스트 케이스 추천받기",
+            use_container_width=True,
+            help="AI가 유사한 케이스를 찾아 테스트 케이스를 생성해줍니다"
+        ):
+            st.query_params.update({"page": "recommend"})
+            st.rerun()
+
+        if st.button(
+            "🔍 키워드 검색",
+            use_container_width=True,
+            help="학습 데이터 안에서 키워드를 검색합니다"
+        ):
+            st.query_params.update({"page": "keyword"})
+            st.rerun()
+
+    with col2:
+        if st.button(
+            "⚠️ 사전 리스크 확인",
+            use_container_width=True,
+            help="AI가 리스크와 사이드 이펙트를 분석해줍니다"
+        ):
+            st.query_params.update({"page": "risk"})
+            st.rerun()
+
+        if st.button(
+            "✅ 의도된 동작인지 확인",
+            use_container_width=True,
+            help="학습 데이터 기반으로 버그 가능성을 판단합니다"
+        ):
+            st.query_params.update({"page": "verify"})
+            st.rerun()
+
+    # 안내 메시지
+    st.markdown("---")
+    st.info("""
+    💡 **기능 설명**
+    - 📝 **테스트 케이스 추천**: AI가 유사 케이스를 찾아 신규 테스트 케이스 생성
+    - ⚠️ **사전 리스크 확인**: 기능 추가/수정 시 발생 가능한 리스크 분석
+    - ✅ **의도된 동작 확인**: 특정 동작이 버그인지 의도된 것인지 판단 (AI 추론X)
+    - 🔍 **키워드 검색**: 학습 데이터에서 빠르게 검색
+    """)
+
+    # 통계 표시
+    tc_count = st.session_state.get('tc_count', 0)
+    doc_count = st.session_state.get('doc_count', 0)
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("📊 테스트 케이스", f"{tc_count}개")
+    with col_b:
+        st.metric("📚 기획 문서", f"{doc_count}개")
+    with col_c:
+        st.metric("🔍 검색 방식", RERANK_METHOD.upper())
